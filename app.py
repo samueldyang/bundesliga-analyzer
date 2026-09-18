@@ -1,5 +1,10 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
 import pandas as pd
 import streamlit as st
+
 from src.analyzer import compare_matchup
 from src.api_client import fetch_matchday_fixtures, fetch_season_matches, parse_match
 from src.database import get_team_last_matches, init_db, upsert_matches
