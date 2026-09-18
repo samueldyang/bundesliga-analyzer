@@ -36,7 +36,7 @@ st.markdown(
 
 st.title("⚽ FCSamurai's Bundesliga Goal Trend Dashboard")
 st.caption(
-    "Rolling 10-match goal analysis for 1H Over 0.5 and FT Over 2.5 probabilities."
+    "Venue-filtered, exponentially weighted Poisson model for 1H Over 0.5 and FT Over 2.5 goal expectations."
 )
 
 # Sidebar Controls
@@ -66,23 +66,26 @@ else:
     # Team Selection Bar
     col1, col2 = st.columns(2)
     with col1:
-        team_a = st.selectbox("Select Team A", teams, index=0)
+        team_a = st.selectbox("Select Home Team", teams, index=0)
     with col2:
         team_b = st.selectbox(
-            "Select Team B", teams, index=1 if len(teams) > 1 else 0
+            "Select Away Team", teams, index=1 if len(teams) > 1 else 0
         )
 
     if team_a and team_b:
         analysis = compare_matchup(team_a, team_b, limit=match_limit)
         summary = analysis["matchup_summary"]
+        xg = analysis["expected_goals"]
 
-        st.markdown("### 📊 Combined Matchup Expectation")
-        m1, m2 = st.columns(2)
+        st.markdown("### 📊 Poisson Goal Model Expectation")
+        m1, m2, m3 = st.columns(3)
         with m1:
+            st.metric(label="Expected Goals (xG)", value=f"{xg['total_ft']}")
+        with m2:
             val_1h = summary["combined_over_05_ht_expectation"]
             st.metric(label="1H Over 0.5 Probability", value=f"{int(val_1h * 100)}%")
             st.progress(val_1h)
-        with m2:
+        with m3:
             val_ft = summary["combined_over_25_ft_expectation"]
             st.metric(label="FT Over 2.5 Probability", value=f"{int(val_ft * 100)}%")
             st.progress(val_ft)
@@ -92,24 +95,10 @@ else:
         # Detailed Side-by-Side Breakdown
         t1, t2 = st.columns(2)
 
-        def display_team_card(team_data, team_name):
-            st.markdown(f"### {team_name}")
-            st.caption(f"Last {team_data['sample_size']} matches performance")
+        def display_team_card(team_name, is_home):
+            role = "Home" if is_home else "Away"
+            st.markdown(f"### {team_name} ({role})")
 
-            rate_ht = team_data["over_05_ht_rate"]
-            rate_ft = team_data["over_25_ft_rate"]
-
-            st.write(
-                f"**1H Over 0.5:** {int(rate_ht * 100)}% ({team_data['over_05_ht_count']}/{team_data['sample_size']})"
-            )
-            st.progress(rate_ht)
-
-            st.write(
-                f"**FT Over 2.5:** {int(rate_ft * 100)}% ({team_data['over_25_ft_count']}/{team_data['sample_size']})"
-            )
-            st.progress(rate_ft)
-
-            # Match Log Table
             raw_matches = get_team_last_matches(team_name, limit=match_limit)
             if raw_matches:
                 df = pd.DataFrame(raw_matches)
@@ -136,6 +125,6 @@ else:
                 )
 
         with t1:
-            display_team_card(analysis["team_a"], team_a)
+            display_team_card(team_a, is_home=True)
         with t2:
-            display_team_card(analysis["team_b"], team_b)
+            display_team_card(team_b, is_home=False)

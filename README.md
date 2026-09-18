@@ -1,6 +1,6 @@
-# ⚽ FCSsamurai's Bundesliga Goal Dashboard
+# ⚽ Bundesliga Goal Trend Dashboard
 
-A FCSamurai lightweight analytics tool that helps you spot goal trends in German football matches. It analyzes recent team performance across the **1. Bundesliga**, **2. Bundesliga**, and **3. Liga** to estimate the likelihood of goals in upcoming fixtures.
+A lightweight analytics tool that helps you spot goal trends in German football matches. It analyzes recent team performance across the **1. Bundesliga**, **2. Bundesliga**, and **3. Liga** to estimate the likelihood of goals in upcoming fixtures.
 
 ### 📊 What Does It Do?
 * **First Half Goals (1H Over 0.5):** Calculates how often at least 1 goal is scored before halftime in a team's recent matches.
@@ -16,6 +16,7 @@ A FCSamurai lightweight analytics tool that helps you spot goal trends in German
 If you want to use the app immediately on your phone or computer without installing anything, click the link below:
 
 👉 **[Click Here to Open the Live App](https://fcsamurai-bundesliga-analyzer.streamlit.app/)**
+
 ---
 
 ### Option 2: Run It on Your Computer (Step-by-Step for Beginners)
@@ -45,8 +46,9 @@ pip install -r requirements.txt
 ```
 
 #### 6. Start the App
-Copy and paste this command into your terminal and press Enter:
-```
+Copy and paste this command into your terminal and press `Enter`:
+```bash
 streamlit run app.py
 ```
+
 Your web browser will automatically open with the dashboard ready to use!
