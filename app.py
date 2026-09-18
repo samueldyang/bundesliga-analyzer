@@ -34,7 +34,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("⚽ Bundesliga Goal Trend Dashboard")
+st.title("⚽ FCSamurai's Bundesliga Goal Trend Dashboard")
 st.caption(
     "Rolling 10-match goal analysis for 1H Over 0.5 and FT Over 2.5 probabilities."
 )
