@@ -9,6 +9,26 @@ from src.analyzer import compare_matchup
 from src.api_client import fetch_matchday_fixtures, fetch_season_matches, parse_match
 from src.database import get_team_last_matches, init_db, upsert_matches
 
+import sqlite3
+from src.database import DB_PATH
+
+def auto_seed_if_empty():
+  conn = sqlite3.connect(DB_PATH)
+  cursor = conn.cursor()
+  cursor.execute("SELECT COUNT(*) FROM matches")
+  match_count = cursor.fetchone()[0]
+  conn.close()
+
+  if match_count == 0:
+    with st.spinner("Seeding database with historical match data..."):
+      for league in ["bl1", "bl2"]:
+        for season in [CURRENT_SEASON - 1, CURRENT_SEASON]:
+          raw = fetch_season_matches(league, season)
+          parsed = [parse_match(m) for m in raw if parse_match(m)]
+          upsert_matches(parsed)
+
+auto_seed_if_empty()
+
 # Configuration Constants
 CURRENT_SEASON = 2026  # 2026/2027 Season
 
@@ -47,33 +67,38 @@ if not fixtures:
 else:
     st.subheader(f"📅 Fixtures for Matchday {matchday} ({league_choice.split(' ')[0]} - 2026/27)")
 
-    for f in fixtures:
-        home, away = f["home_team"], f["away_team"]
-        if not home or not away:
-            continue
+for f in fixtures:
+    home, away = f["home_team"], f["away_team"]
+    if not home or not away:
+        continue
 
-        res = compare_matchup(home, away, limit=match_limit)
-        poisson = res["poisson_model"]
-        raw = res["raw_model"]
+    # 1. Define res, poisson, and raw FIRST
+    res = compare_matchup(home, away, limit=match_limit)
+    poisson = res["poisson_model"]
+    raw = res["raw_model"]
 
-        with st.container(border=True):
-            st.markdown(f"#### ⚔️ **{home}** vs **{away}**")
+    # 2. Check for defaults AFTER poisson and raw are defined
+    with st.container(border=True):
+        st.markdown(f"#### ⚔️ **{home}** vs **{away}**")
 
-            c1, c2 = st.columns(2)
+        if poisson["xg"] == 2.4 and raw["prob_1h_over05"] == 0.5:
+            st.warning("⚠️ Insufficient historical match data. Displaying league baseline defaults.")
 
-            with c1:
-                st.markdown("**🎯 Poisson Model (Venue & Decay Weighted)**")
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Expected Goals (xG)", f"{poisson['xg']}")
-                m2.metric("1H Over 0.5", f"{int(poisson['prob_1h_over05'] * 100)}%")
-                m3.metric("FT Over 2.5", f"{int(poisson['prob_ft_over25'] * 100)}%")
+        c1, c2 = st.columns(2)
 
-            with c2:
-                st.markdown("**📊 Raw Averages (Unweighted Overall)**")
-                r1, r2, r3 = st.columns(3)
-                r1.metric("Raw xG", f"{raw['xg']}")
-                r2.metric("1H Over 0.5 Rate", f"{int(raw['prob_1h_over05'] * 100)}%")
-                r3.metric("FT Over 2.5 Rate", f"{int(raw['prob_ft_over25'] * 100)}%")
+        with c1:
+            st.markdown("**🎯 Poisson Model (Venue & Decay Weighted)**")
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Expected Goals (xG)", f"{poisson['xg']}")
+            m2.metric("1H Over 0.5", f"{int(poisson['prob_1h_over05'] * 100)}%")
+            m3.metric("FT Over 2.5", f"{int(poisson['prob_ft_over25'] * 100)}%")
+
+        with c2:
+            st.markdown("**📊 Raw Averages (Unweighted Overall)**")
+            r1, r2, r3 = st.columns(3)
+            r1.metric("Raw xG", f"{raw['xg']}")
+            r2.metric("1H Over 0.5 Rate", f"{int(raw['prob_1h_over05'] * 100)}%")
+            r3.metric("FT Over 2.5 Rate", f"{int(raw['prob_ft_over25'] * 100)}%")
 
             with st.expander("Show Recent Fixture History"):
                 h_col, a_col = st.columns(2)
