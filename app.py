@@ -1,130 +1,84 @@
-import sqlite3
 import pandas as pd
 import streamlit as st
 from src.analyzer import compare_matchup
-from src.api_client import fetch_season_matches, parse_match
-from src.database import DB_PATH, get_team_last_matches, init_db, upsert_matches
+from src.api_client import fetch_matchday_fixtures, fetch_season_matches, parse_match
+from src.database import get_team_last_matches, init_db, upsert_matches
 
-st.set_page_config(
-    page_title="Bundesliga Goal Analytics", page_icon="⚽", layout="wide"
-)
+# Configuration Constants
+CURRENT_SEASON = 2026  # 2026/2027 Season
 
+st.set_page_config(page_title="Bundesliga Matchday Goal Analytics", page_icon="⚽", layout="wide")
 init_db()
 
+st.title("⚽ FCSamurai's Bundesliga Matchday Goal Dashboard")
+st.caption("Side-by-side comparison of **Poisson (Venue-Weighted)** and **Raw Arithmetic** goal expectations across scheduled matchdays.")
 
-def get_available_teams() -> list:
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT DISTINCT home_team FROM matches UNION SELECT DISTINCT away_team FROM matches ORDER BY home_team"
-    )
-    teams = [row[0] for row in cursor.fetchall() if row[0]]
-    conn.close()
-    return teams
-
-
-# Custom Styling
-st.markdown(
-    """
-    <style>
-        div[data-testid="stMetricValue"] { font-size: 32px; font-weight: bold; color: #0E1117; }
-        .stProgress > div > div > div > div { background-color: #FF4B4B; }
-    </style>
-""",
-    unsafe_allow_html=True,
-)
-
-st.title("⚽ FCSamurai's Bundesliga Goal Trend Dashboard")
-st.caption(
-    "Venue-filtered, exponentially weighted Poisson model for 1H Over 0.5 and FT Over 2.5 goal expectations."
-)
-
-# Sidebar Controls
+# Sidebar Configuration
 with st.sidebar:
-    st.header("⚙️ Configuration")
-    match_limit = st.slider(
-        "Rolling Match Window", min_value=5, max_value=20, value=10
-    )
+    st.header("⚙️ Settings")
+    league_choice = st.selectbox("Select League", ["1. Bundesliga (bl1)", "2. Bundesliga (bl2)"])
+    league_code = "bl1" if "bl1" in league_choice else "bl2"
+
+    matchday = st.slider("Select Matchday (Spieltag)", min_value=1, max_value=34, value=1)
+    match_limit = st.slider("History Sample Window (N matches)", min_value=5, max_value=20, value=10)
 
     st.divider()
-    if st.button("🔄 Sync OpenLigaDB Data", use_container_width=True):
-        with st.spinner("Fetching latest results..."):
-            for league in ["bl1", "bl2", "bl3"]:
-                raw = fetch_season_matches(league, 2025)
-                parsed = [parse_match(m) for m in raw if parse_match(m)]
-                upsert_matches(parsed)
-            st.success("Database synced!")
+    if st.button("🔄 Sync Database from OpenLigaDB", use_container_width=True):
+        with st.spinner("Fetching current (2026/27) and previous (2025/26) season data..."):
+            for l in ["bl1", "bl2"]:
+                # Sync both seasons so early-season matches have historical depth for rolling window
+                for season in [CURRENT_SEASON - 1, CURRENT_SEASON]:
+                    raw = fetch_season_matches(l, season)
+                    parsed = [parse_match(m) for m in raw if parse_match(m)]
+                    upsert_matches(parsed)
+            st.success("Database synced successfully with 2026/2027 fixtures!")
             st.rerun()
 
-teams = get_available_teams()
+# Fetch Matchday Fixtures for 2026/2027 Season
+fixtures = fetch_matchday_fixtures(league_code, season=CURRENT_SEASON, matchday=matchday)
 
-if not teams:
-    st.info(
-        "👈 Click **Sync OpenLigaDB Data** in the sidebar to populate the database."
-    )
+if not fixtures:
+    st.info("No fixtures found for this matchday or database needs syncing. Click **Sync Database** in the sidebar.")
 else:
-    # Team Selection Bar
-    col1, col2 = st.columns(2)
-    with col1:
-        team_a = st.selectbox("Select Home Team", teams, index=0)
-    with col2:
-        team_b = st.selectbox(
-            "Select Away Team", teams, index=1 if len(teams) > 1 else 0
-        )
+    st.subheader(f"📅 Fixtures for Matchday {matchday} ({league_choice.split(' ')[0]} - 2026/27)")
 
-    if team_a and team_b:
-        analysis = compare_matchup(team_a, team_b, limit=match_limit)
-        summary = analysis["matchup_summary"]
-        xg = analysis["expected_goals"]
+    for f in fixtures:
+        home, away = f["home_team"], f["away_team"]
+        if not home or not away:
+            continue
 
-        st.markdown("### 📊 Poisson Goal Model Expectation")
-        m1, m2, m3 = st.columns(3)
-        with m1:
-            st.metric(label="Expected Goals (xG)", value=f"{xg['total_ft']}")
-        with m2:
-            val_1h = summary["combined_over_05_ht_expectation"]
-            st.metric(label="1H Over 0.5 Probability", value=f"{int(val_1h * 100)}%")
-            st.progress(val_1h)
-        with m3:
-            val_ft = summary["combined_over_25_ft_expectation"]
-            st.metric(label="FT Over 2.5 Probability", value=f"{int(val_ft * 100)}%")
-            st.progress(val_ft)
+        res = compare_matchup(home, away, limit=match_limit)
+        poisson = res["poisson_model"]
+        raw = res["raw_model"]
 
-        st.divider()
+        with st.container(border=True):
+            st.markdown(f"#### ⚔️ **{home}** vs **{away}**")
 
-        # Detailed Side-by-Side Breakdown
-        t1, t2 = st.columns(2)
+            c1, c2 = st.columns(2)
 
-        def display_team_card(team_name, is_home):
-            role = "Home" if is_home else "Away"
-            st.markdown(f"### {team_name} ({role})")
+            with c1:
+                st.markdown("**🎯 Poisson Model (Venue & Decay Weighted)**")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Expected Goals (xG)", f"{poisson['xg']}")
+                m2.metric("1H Over 0.5", f"{int(poisson['prob_1h_over05'] * 100)}%")
+                m3.metric("FT Over 2.5", f"{int(poisson['prob_ft_over25'] * 100)}%")
 
-            raw_matches = get_team_last_matches(team_name, limit=match_limit)
-            if raw_matches:
-                df = pd.DataFrame(raw_matches)
-                df["Date"] = pd.to_datetime(df["match_date"]).dt.strftime(
-                    "%Y-%m-%d"
-                )
-                df["Score (HT)"] = (
-                    df["ft_home_goals"].astype(str)
-                    + "-"
-                    + df["ft_away_goals"].astype(str)
-                    + " ("
-                    + df["ht_home_goals"].astype(str)
-                    + "-"
-                    + df["ht_away_goals"].astype(str)
-                    + ")"
-                )
-                df["Match"] = df["home_team"] + " vs " + df["away_team"]
+            with c2:
+                st.markdown("**📊 Raw Averages (Unweighted Overall)**")
+                r1, r2, r3 = st.columns(3)
+                r1.metric("Raw xG", f"{raw['xg']}")
+                r2.metric("1H Over 0.5 Rate", f"{int(raw['prob_1h_over05'] * 100)}%")
+                r3.metric("FT Over 2.5 Rate", f"{int(raw['prob_ft_over25'] * 100)}%")
 
-                st.markdown("**Recent Fixtures**")
-                st.dataframe(
-                    df[["Date", "Match", "Score (HT)"]],
-                    hide_index=True,
-                    use_container_width=True,
-                )
-
-        with t1:
-            display_team_card(team_a, is_home=True)
-        with t2:
-            display_team_card(team_b, is_home=False)
+            with st.expander("Show Recent Fixture History"):
+                h_col, a_col = st.columns(2)
+                with h_col:
+                    st.caption(f"{home} Recent Games")
+                    h_data = pd.DataFrame(get_team_last_matches(home, limit=5))
+                    if not h_data.empty:
+                        st.dataframe(h_data[["match_date", "home_team", "away_team", "ft_home_goals", "ft_away_goals"]], hide_index=True)
+                with a_col:
+                    st.caption(f"{away} Recent Games")
+                    a_data = pd.DataFrame(get_team_last_matches(away, limit=5))
+                    if not a_data.empty:
+                        st.dataframe(a_data[["match_date", "home_team", "away_team", "ft_home_goals", "ft_away_goals"]], hide_index=True)

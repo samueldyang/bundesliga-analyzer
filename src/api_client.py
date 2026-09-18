@@ -1,71 +1,57 @@
-from typing import Dict, List, Optional
 import requests
+from typing import List, Dict
 
-BASE_URL = "https://api.openligadb.de"
-
-
-def fetch_season_matches(league: str, season: int) -> List[Dict]:
-    """Fetches all matches for a specified league and season.
-
-    Leagues: 'bl1' (1. BL), 'bl2' (2. BL), 'bl3' (3. Liga) Example season: 2025
-    """
-    url = f"{BASE_URL}/getmatchdata/{league}/{season}"
+def fetch_season_matches(league_shortcut: str, season: int) -> list:
+    url = f"https://api.openligadb.de/getmatchdata/{league_shortcut}/{season}"
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         return response.json()
-    except requests.RequestException as e:
-        print(f"Error fetching data from OpenLigaDB: {e}")
+    except Exception as e:
+        print(f"Error fetching {league_shortcut} season {season}: {e}")
         return []
 
+def fetch_matchday_fixtures(league_shortcut: str, season: int, matchday: int) -> List[Dict]:
+    """Fetches all fixtures for a specific matchday (Spieltag)."""
+    url = f"https://api.openligadb.de/getmatchdata/{league_shortcut}/{season}/{matchday}"
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        fixtures = []
+        for m in data:
+            fixtures.append({
+                "match_id": m.get("matchID"),
+                "home_team": m.get("team1", {}).get("teamName"),
+                "away_team": m.get("team2", {}).get("teamName"),
+                "match_date": m.get("matchDateTime"),
+                "is_finished": m.get("matchIsFinished", False)
+            })
+        return fixtures
+    except Exception as e:
+        print(f"Error fetching matchday fixtures: {e}")
+        return []
 
-def parse_match(match: Dict) -> Optional[Dict]:
-    """Parses raw match payload into a standardized dictionary.
-
-    Returns None if the match is not yet finished.
-    """
-    if not match.get("matchIsFinished", False):
+def parse_match(raw: dict) -> dict:
+    if not raw.get("matchIsFinished"):
         return None
 
-    ht_home, ht_away = 0, 0
-    ft_home, ft_away = 0, 0
+    results = {r["resultName"]: r for r in raw.get("matchResults", [])}
+    ft = results.get("Endergebnis") or results.get("Endresultat")
+    ht = results.get("Halbzeitergebnis")
 
-    # OpenLigaDB uses resultOrderID 1 for Half-Time and 2 for Full-Time
-    for result in match.get("matchResults", []):
-        r_name = result.get("resultName", "")
-        r_order = result.get("resultOrderID")
-
-        if r_order == 1 or "Halbzeit" in r_name:
-            ht_home = result.get("pointsTeam1", 0)
-            ht_away = result.get("pointsTeam2", 0)
-        elif r_order == 2 or "Endergebnis" in r_name:
-            ft_home = result.get("pointsTeam1", 0)
-            ft_away = result.get("pointsTeam2", 0)
+    if not ft or not ht:
+        return None
 
     return {
-        "match_id": match.get("matchID"),
-        "league": match.get("leagueShortcut", "").lower(),
-        "match_date": match.get("matchDateTime"),
-        "home_team": match.get("team1", {}).get("teamName"),
-        "away_team": match.get("team2", {}).get("teamName"),
-        "ht_home_goals": ht_home,
-        "ht_away_goals": ht_away,
-        "ft_home_goals": ft_home,
-        "ft_away_goals": ft_away,
+        "match_id": raw["matchID"],
+        "league_shortcut": raw["leagueShortcut"],
+        "season": raw["leagueSeason"],
+        "match_date": raw["matchDateTime"],
+        "home_team": raw["team1"]["teamName"],
+        "away_team": raw["team2"]["teamName"],
+        "ft_home_goals": ft["pointsTeam1"],
+        "ft_away_goals": ft["pointsTeam2"],
+        "ht_home_goals": ht["pointsTeam1"],
+        "ht_away_goals": ht["pointsTeam2"],
     }
-
-
-if __name__ == "__main__":
-    print("Testing OpenLigaDB connection...")
-    raw_data = fetch_season_matches(league="bl1", season=2025)
-
-    if raw_data:
-        parsed_matches = [
-            parse_match(m) for m in raw_data if parse_match(m) is not None
-        ]
-        print(f"Successfully fetched {len(raw_data)} raw matches.")
-        print(f"Parsed {len(parsed_matches)} finished matches.\n")
-        print("Sample Parsed Match:")
-        print(parsed_matches[0])
-    else:
-        print("Failed to retrieve match data.")
