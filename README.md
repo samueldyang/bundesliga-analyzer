@@ -1,6 +1,6 @@
 # ⚽ FCSamurai's Bundesliga Goal Trend Dashboard
 
-A lightweight analytics tool that helps you spot goal trends in German football matches. It analyzes recent team performance across the **1. Bundesliga**, **2. Bundesliga**, and **3. Liga** to estimate the likelihood of goals in upcoming fixtures.
+A lightweight analytics tool that helps you spot goal trends in German football matches. It analyzes recent team performance across the **1. Bundesliga** and **2. Bundesliga** to estimate the likelihood of goals in upcoming fixtures.
 
 ### 📊 What Does It Do?
 * **First Half Goals (1H Over 0.5):** Calculates how often at least 1 goal is scored before halftime in a team's recent matches.
