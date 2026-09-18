@@ -175,3 +175,17 @@ for f in fixtures:
               ]],
               hide_index=True,
           )
+
+# Footer
+st.divider()
+st.markdown(
+    """
+    <div style="text-align: center; color: #888888; padding: 15px 0;">
+        Created with ❤️ by <b>Samuel Yang</b> &nbsp;|&nbsp; 
+        <a href="https://github.com/samueldyang" target="_blank" style="color: #888888; text-decoration: none; font-weight: bold;">
+            GitHub: samueldyang
+        </a>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
