@@ -3,37 +3,36 @@ import sqlite3
 import sys
 from typing import Dict, List
 
-# 1. Add project root to sys.path for direct execution
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# 1. Base directory and path anchoring
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "bundesliga.db"))
 
-# 2. Define global variables BEFORE function signatures
-DB_PATH = os.path.join("data", "matches.db")
+sys.path.append(os.path.abspath(os.path.join(BASE_DIR, "..")))
 
 from src.api_client import fetch_season_matches, parse_match
 
 
-def init_db(db_path: str = DB_PATH) -> None:
-    """Creates the data directory and initializes the matches table if it doesn't exist."""
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+def get_connection():
+    return sqlite3.connect(DB_PATH)
 
-    cursor.execute(
-        """
+
+def init_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS matches (
             match_id INTEGER PRIMARY KEY,
-            league TEXT,
+            league_shortcut TEXT,
+            season INTEGER,
             match_date TEXT,
             home_team TEXT,
             away_team TEXT,
-            ht_home_goals INTEGER,
-            ht_away_goals INTEGER,
             ft_home_goals INTEGER,
-            ft_away_goals INTEGER
+            ft_away_goals INTEGER,
+            ht_home_goals INTEGER,
+            ht_away_goals INTEGER
         )
-    """
-    )
-
+    """)
     conn.commit()
     conn.close()
 
@@ -49,14 +48,15 @@ def upsert_matches(matches: List[Dict], db_path: str = DB_PATH) -> None:
     cursor.executemany(
         """
         INSERT INTO matches (
-            match_id, league, match_date, home_team, away_team,
+            match_id, league_shortcut, season, match_date, home_team, away_team,
             ht_home_goals, ht_away_goals, ft_home_goals, ft_away_goals
         ) VALUES (
-            :match_id, :league, :match_date, :home_team, :away_team,
+            :match_id, :league_shortcut, :season, :match_date, :home_team, :away_team,
             :ht_home_goals, :ht_away_goals, :ft_home_goals, :ft_away_goals
         )
         ON CONFLICT(match_id) DO UPDATE SET
-            league=excluded.league,
+            league_shortcut=excluded.league_shortcut,
+            season=excluded.season,
             match_date=excluded.match_date,
             home_team=excluded.home_team,
             away_team=excluded.away_team,

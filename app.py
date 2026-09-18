@@ -17,22 +17,28 @@ CURRENT_SEASON = 2026
 st.set_page_config(page_title="FCSamurai's Bundesliga Matchday Goal Analytics", page_icon="⚽", layout="wide")
 init_db()
 
-def auto_seed_if_empty():
+def auto_seed_if_empty(league_code):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM matches")
+    cursor.execute("SELECT COUNT(*) FROM matches WHERE league_shortcut = ?", (selected_league_code,))
     match_count = cursor.fetchone()[0]
     conn.close()
 
     if match_count == 0:
-        with st.spinner("Seeding database with historical match data..."):
-            for league in ["bl1", "bl2"]:
-                for season in [CURRENT_SEASON - 1, CURRENT_SEASON]:
-                    raw = fetch_season_matches(league, season)
-                    parsed = [parse_match(m) for m in raw if parse_match(m)]
+        with st.spinner(f"Populating database for {selected_league_code}..."):
+            total_added = 0
+            for season in [CURRENT_SEASON - 1, CURRENT_SEASON]:
+                raw = fetch_season_matches(selected_league_code, season)
+                parsed = [parse_match(m) for m in raw if parse_match(m)]
+                if parsed:
                     upsert_matches(parsed)
-
-auto_seed_if_empty()
+                    total_added += len(parsed)
+            
+            if total_added > 0:
+                st.success(f"Successfully seeded {total_added} matches for {selected_league_code}!")
+                st.rerun()
+            else:
+                st.error("Failed to retrieve historical match data from OpenLigaDB. Click 'Sync Database' in the sidebar to try again.")
 
 # Sidebar Configuration
 with st.sidebar:
