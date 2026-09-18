@@ -1,42 +1,38 @@
-import sys
 import os
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+import sqlite3
+import sys
+
+# Force Streamlit Cloud to search root directory first
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 import pandas as pd
 import streamlit as st
-
 from src.analyzer import compare_matchup
 from src.api_client import fetch_matchday_fixtures, fetch_season_matches, parse_match
-from src.database import get_team_last_matches, init_db, upsert_matches
-
-import sqlite3
-from src.database import DB_PATH
-
-def auto_seed_if_empty():
-  conn = sqlite3.connect(DB_PATH)
-  cursor = conn.cursor()
-  cursor.execute("SELECT COUNT(*) FROM matches")
-  match_count = cursor.fetchone()[0]
-  conn.close()
-
-  if match_count == 0:
-    with st.spinner("Seeding database with historical match data..."):
-      for league in ["bl1", "bl2"]:
-        for season in [CURRENT_SEASON - 1, CURRENT_SEASON]:
-          raw = fetch_season_matches(league, season)
-          parsed = [parse_match(m) for m in raw if parse_match(m)]
-          upsert_matches(parsed)
-
-auto_seed_if_empty()
+from src.database import DB_PATH, get_team_last_matches, init_db, upsert_matches
 
 # Configuration Constants
-CURRENT_SEASON = 2026  # 2026/2027 Season
+CURRENT_SEASON = 2026
 
-st.set_page_config(page_title="Bundesliga Matchday Goal Analytics", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="FCSamurai's Bundesliga Matchday Goal Analytics", page_icon="⚽", layout="wide")
 init_db()
 
-st.title("⚽ FCSamurai's Bundesliga Matchday Goal Dashboard")
-st.caption("Side-by-side comparison of **Poisson (Venue-Weighted)** and **Raw Arithmetic** goal expectations across scheduled matchdays.")
+def auto_seed_if_empty():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM matches")
+    match_count = cursor.fetchone()[0]
+    conn.close()
+
+    if match_count == 0:
+        with st.spinner("Seeding database with historical match data..."):
+            for league in ["bl1", "bl2"]:
+                for season in [CURRENT_SEASON - 1, CURRENT_SEASON]:
+                    raw = fetch_season_matches(league, season)
+                    parsed = [parse_match(m) for m in raw if parse_match(m)]
+                    upsert_matches(parsed)
+
+auto_seed_if_empty()
 
 # Sidebar Configuration
 with st.sidebar:
