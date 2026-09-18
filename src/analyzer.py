@@ -1,99 +1,126 @@
+import math
 import os
 import sys
 from typing import Dict, List
 
-# Add project root directory to Python path for direct script execution
+# Add project root directory to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.database import get_team_last_matches
 
 
-def calculate_team_stats(team_name: str, limit: int = 10) -> Dict:
-    """Calculates Over 0.5 1H and Over 2.5 FT hit rates for a team's last N matches."""
-    matches = get_team_last_matches(team_name, limit=limit)
+def poisson_pmf(k: int, lambd: float) -> float:
+    """Calculates Poisson probability mass function P(X = k)."""
+    if lambd <= 0:
+        return 1.0 if k == 0 else 0.0
+    return (math.pow(lambd, k) * math.exp(-lambd)) / math.factorial(k)
 
+
+def calculate_weighted_averages(
+    matches: List[Dict], is_home_target: bool
+) -> Dict[str, float]:
+    """Calculates exponentially weighted average goals for a team (decay factor = 0.85)."""
     if not matches:
-        return {
-            "team_name": team_name,
-            "sample_size": 0,
-            "over_05_ht_count": 0,
-            "over_05_ht_rate": 0.0,
-            "over_25_ft_count": 0,
-            "over_25_ft_rate": 0.0,
-        }
+        return {"ft_gf": 1.2, "ft_ga": 1.2, "ht_gf": 0.5, "ht_ga": 0.5}
 
-    sample_size = len(matches)
+    # Weight decreases exponentially for older matches
+    weights = [0.85**i for i in range(len(matches))]
+    total_weight = sum(weights)
 
-    # First Half Over 0.5 (At least 1 goal scored in 1H)
-    over_05_ht_count = sum(
-        1 for m in matches if (m["ht_home_goals"] + m["ht_away_goals"]) >= 1
-    )
+    ft_gf_sum, ft_ga_sum = 0.0, 0.0
+    ht_gf_sum, ht_ga_sum = 0.0, 0.0
 
-    # Full Time Over 2.5 (At least 3 goals scored in FT)
-    over_25_ft_count = sum(
-        1 for m in matches if (m["ft_home_goals"] + m["ft_away_goals"]) >= 3
-    )
+    for idx, m in enumerate(matches):
+        w = weights[idx]
+        if is_home_target:
+            ft_gf_sum += m["ft_home_goals"] * w
+            ft_ga_sum += m["ft_away_goals"] * w
+            ht_gf_sum += m["ht_home_goals"] * w
+            ht_ga_sum += m["ht_away_goals"] * w
+        else:
+            ft_gf_sum += m["ft_away_goals"] * w
+            ft_ga_sum += m["ft_home_goals"] * w
+            ht_gf_sum += m["ht_away_goals"] * w
+            ht_ga_sum += m["ht_home_goals"] * w
 
     return {
-        "team_name": team_name,
-        "sample_size": sample_size,
-        "over_05_ht_count": over_05_ht_count,
-        "over_05_ht_rate": round(over_05_ht_count / sample_size, 2),
-        "over_25_ft_count": over_25_ft_count,
-        "over_25_ft_rate": round(over_25_ft_count / sample_size, 2),
+        "ft_gf": ft_gf_sum / total_weight,
+        "ft_ga": ft_ga_sum / total_weight,
+        "ht_gf": ht_gf_sum / total_weight,
+        "ht_ga": ht_ga_sum / total_weight,
     }
 
 
-def compare_matchup(team_a: str, team_b: str, limit: int = 10) -> Dict:
-    """Combines rolling statistics for two teams to calculate joint expectations."""
-    stats_a = calculate_team_stats(team_a, limit=limit)
-    stats_b = calculate_team_stats(team_b, limit=limit)
+def compute_poisson_over_probability(
+    lambda_home: float, lambda_away: float, threshold: float
+) -> float:
+    """Computes P(Total Goals > threshold) using bivariate Poisson independent distribution."""
+    prob_under_or_equal = 0.0
+    max_goals = int(threshold)
 
-    avg_05_ht = round(
-        (stats_a["over_05_ht_rate"] + stats_b["over_05_ht_rate"]) / 2, 2
+    for h in range(max_goals + 1):
+        for a in range(max_goals + 1 - h):
+            prob_under_or_equal += poisson_pmf(h, lambda_home) * poisson_pmf(
+                a, lambda_away
+            )
+
+    return max(0.0, min(1.0, 1.0 - prob_under_or_equal))
+
+
+def compare_matchup(home_team: str, away_team: str, limit: int = 10) -> Dict:
+    """Calculates advanced venue-filtered, exponentially weighted Poisson expectations."""
+    all_home = get_team_last_matches(home_team, limit=limit * 2)
+    all_away = get_team_last_matches(away_team, limit=limit * 2)
+
+    # 1. Venue-Specific Filtering
+    home_matches = [m for m in all_home if m["home_team"] == home_team][:limit]
+    away_matches = [m for m in all_away if m["away_team"] == away_team][:limit]
+
+    # Fallback to all matches if venue sample size is too small
+    if len(home_matches) < 3:
+        home_matches = all_home[:limit]
+    if len(away_matches) < 3:
+        away_matches = all_away[:limit]
+
+    # 2. Exponential Decay Weighting
+    stats_home = calculate_weighted_averages(home_matches, is_home_target=True)
+    stats_away = calculate_weighted_averages(away_matches, is_home_target=False)
+
+    # Calculate Expected Goals (λ) by averaging home attack vs away defense
+    lambda_home_ft = (stats_home["ft_gf"] + stats_away["ft_ga"]) / 2.0
+    lambda_away_ft = (stats_away["ft_gf"] + stats_home["ft_ga"]) / 2.0
+
+    lambda_home_ht = (stats_home["ht_gf"] + stats_away["ht_ga"]) / 2.0
+    lambda_away_ht = (stats_away["ht_gf"] + stats_home["ht_ga"]) / 2.0
+
+    # 3. Poisson Probability Modeling
+    prob_1h_over05 = compute_poisson_over_probability(
+        lambda_home_ht, lambda_away_ht, threshold=0.5
     )
-    avg_25_ft = round(
-        (stats_a["over_25_ft_rate"] + stats_b["over_25_ft_rate"]) / 2, 2
+    prob_ft_over25 = compute_poisson_over_probability(
+        lambda_home_ft, lambda_away_ft, threshold=2.5
     )
 
     return {
-        "team_a": stats_a,
-        "team_b": stats_b,
+        "home_team": home_team,
+        "away_team": away_team,
+        "sample_size_home": len(home_matches),
+        "sample_size_away": len(away_matches),
+        "expected_goals": {
+            "home_ft": round(lambda_home_ft, 2),
+            "away_ft": round(lambda_away_ft, 2),
+            "total_ft": round(lambda_home_ft + lambda_away_ft, 2),
+        },
         "matchup_summary": {
-            "sample_limit": limit,
-            "combined_over_05_ht_expectation": avg_05_ht,
-            "combined_over_25_ft_expectation": avg_25_ft,
+            "combined_over_05_ht_expectation": round(prob_1h_over05, 2),
+            "combined_over_25_ft_expectation": round(prob_ft_over25, 2),
         },
     }
 
 
 if __name__ == "__main__":
-    team_1 = "FC Bayern München"
-    team_2 = "Borussia Dortmund"
-
-    print(f"Analyzing matchup: {team_1} vs {team_2}...\n")
-    analysis = compare_matchup(team_1, team_2, limit=10)
-
-    print(f"--- {team_1} (Last {analysis['team_a']['sample_size']} Matches) ---")
-    print(
-        f"1H Over 0.5 Rate: {analysis['team_a']['over_05_ht_rate'] * 100}% ({analysis['team_a']['over_05_ht_count']}/{analysis['team_a']['sample_size']})"
+    res = compare_matchup(
+        "FC Bayern München", "Borussia Dortmund", limit=10
     )
-    print(
-        f"FT Over 2.5 Rate: {analysis['team_a']['over_25_ft_rate'] * 100}% ({analysis['team_a']['over_25_ft_count']}/{analysis['team_a']['sample_size']})\n"
-    )
-
-    print(f"--- {team_2} (Last {analysis['team_b']['sample_size']} Matches) ---")
-    print(
-        f"1H Over 0.5 Rate: {analysis['team_b']['over_05_ht_rate'] * 100}% ({analysis['team_b']['over_05_ht_count']}/{analysis['team_b']['sample_size']})"
-    )
-    print(
-        f"FT Over 2.5 Rate: {analysis['team_b']['over_25_ft_rate'] * 100}% ({analysis['team_b']['over_25_ft_count']}/{analysis['team_b']['sample_size']})\n"
-    )
-
-    print("--- Combined Matchup Expectation ---")
-    print(
-        f"1H Over 0.5 Probability Expectation: {analysis['matchup_summary']['combined_over_05_ht_expectation'] * 100}%"
-    )
-    print(
-        f"FT Over 2.5 Probability Expectation: {analysis['matchup_summary']['combined_over_25_ft_expectation'] * 100}%"
-    )
+    print("Expected Goals:", res["expected_goals"])
+    print("Probabilities:", res["matchup_summary"])
