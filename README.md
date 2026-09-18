@@ -15,8 +15,7 @@ A FCSamurai lightweight analytics tool that helps you spot goal trends in German
 ### Option 1: Use the Web Version (Easiest — No Installation Needed)
 If you want to use the app immediately on your phone or computer without installing anything, click the link below:
 
-👉 **[Click Here to Open the Live App](https://your-streamlit-app-link.streamlit.app)** *(Replace with your actual Streamlit link once deployed)*
-
+👉 **[Click Here to Open the Live App]([https://your-streamlit-app-link.streamlit.app](https://fcsamurai-bundesliga-analyzer.streamlit.app/))
 ---
 
 ### Option 2: Run It on Your Computer (Step-by-Step for Beginners)
@@ -43,7 +42,11 @@ Type `cd ` (include the space) in your terminal, then drag and drop the unzipped
 Copy and paste this command into your terminal and press `Enter`:
 ```bash
 pip install -r requirements.txt
+```
 
 #### 6. Start the App
 Copy and paste this command into your terminal and press Enter:
+```
 streamlit run app.py
+```
+Your web browser will automatically open with the dashboard ready to use!
