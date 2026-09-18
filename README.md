@@ -15,7 +15,7 @@ A FCSamurai lightweight analytics tool that helps you spot goal trends in German
 ### Option 1: Use the Web Version (Easiest — No Installation Needed)
 If you want to use the app immediately on your phone or computer without installing anything, click the link below:
 
-👉 **[Click Here to Open the Live App]([https://your-streamlit-app-link.streamlit.app](https://fcsamurai-bundesliga-analyzer.streamlit.app/))
+👉 **[Click Here to Open the Live App](https://fcsamurai-bundesliga-analyzer.streamlit.app/)**
 ---
 
 ### Option 2: Run It on Your Computer (Step-by-Step for Beginners)
