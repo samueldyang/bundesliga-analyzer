@@ -67,12 +67,19 @@ def sync_latest_season_matches(league_code):
 with st.sidebar:
   st.header("⚙️ Settings")
   league_choice = st.selectbox(
-      "Select League", ["1. Bundesliga (bl1)", "2. Bundesliga (bl2)"]
+      "Select League",
+      ["1. Bundesliga (bl1)", "2. Bundesliga (bl2)", "3. Liga (bl3)"],
   )
-  league_code = "bl1" if "bl1" in league_choice else "bl2"
+  
+  if "bl1" in league_choice and "bl3" not in league_choice:
+    league_code = "bl1"
+  elif "bl2" in league_choice:
+    league_code = "bl2"
+  else:
+    league_code = "bl3"
 
   matchday = st.slider(
-      "Select Matchday (Spieltag)", min_value=1, max_value=34, value=1
+      "Select Matchday (Spieltag)", min_value=1, max_value=38, value=1
   )
   match_limit = st.slider(
       "History Sample Window (N matches)", min_value=5, max_value=20, value=10
@@ -83,12 +90,12 @@ with st.sidebar:
     with st.spinner(
         "Fetching current (2026/27) and previous (2025/26) season data..."
     ):
-      for l in ["bl1", "bl2"]:
+      for l in ["bl1", "bl2", "bl3"]:
         for season in [CURRENT_SEASON - 1, CURRENT_SEASON]:
           raw = fetch_season_matches(l, season)
           parsed = [parse_match(m) for m in raw if parse_match(m)]
           upsert_matches(parsed)
-      st.success("Database synced successfully with 2026/2027 fixtures!")
+      st.success("Database synced successfully with fixtures!")
       st.rerun()
 
 # Run Auto-Seed Check and Daily Sync for Selected League
@@ -133,17 +140,19 @@ for f in fixtures:
 
     with c1:
       st.markdown("**🎯 Poisson Model (Venue & Decay Weighted)**")
-      m1, m2, m3 = st.columns(3)
+      m1, m2, m3, m4 = st.columns(4)
       m1.metric("Expected Goals (xG)", f"{poisson['xg']}")
       m2.metric("1H Over 0.5", f"{int(poisson['prob_1h_over05'] * 100)}%")
-      m3.metric("FT Over 2.5", f"{int(poisson['prob_ft_over25'] * 100)}%")
+      m3.metric("FT Over 1.5", f"{int(poisson['prob_ft_over15'] * 100)}%")
+      m4.metric("FT Over 2.5", f"{int(poisson['prob_ft_over25'] * 100)}%")
 
     with c2:
       st.markdown("**📊 Raw Averages (Unweighted Overall)**")
-      r1, r2, r3 = st.columns(3)
+      r1, r2, r3, r4 = st.columns(4)
       r1.metric("Raw xG", f"{raw['xg']}")
       r2.metric("1H Over 0.5 Rate", f"{int(raw['prob_1h_over05'] * 100)}%")
-      r3.metric("FT Over 2.5 Rate", f"{int(raw['prob_ft_over25'] * 100)}%")
+      r3.metric("FT Over 1.5 Rate", f"{int(raw['prob_ft_over15'] * 100)}%")
+      r4.metric("FT Over 2.5 Rate", f"{int(raw['prob_ft_over25'] * 100)}%")
 
     with st.expander("Show Recent Fixture History"):
       h_col, a_col = st.columns(2)
@@ -176,16 +185,9 @@ for f in fixtures:
               hide_index=True,
           )
 
-# Footer
+# Simple Footer
 st.divider()
-st.markdown(
-    """
-    <div style="text-align: center; color: #888888; padding: 15px 0;">
-        Created with ❤️ by <b>Samuel Yang</b> &nbsp;|&nbsp; 
-        <a href="https://github.com/samueldyang" target="_blank" style="color: #888888; text-decoration: none; font-weight: bold;">
-            GitHub: samueldyang
-        </a>
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.caption(
+    "Created with ❤️ by **Samuel Yang** | [GitHub:"
+    " samueldyang](https://github.com/samueldyang)"
 )
